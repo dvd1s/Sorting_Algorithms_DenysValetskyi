@@ -1,4 +1,4 @@
-﻿import random
+import random
 import time
 import csv
 import os
@@ -32,7 +32,7 @@ def selection_sort(arr):
 def quick_sort(arr):
     if len(arr) <= 1:
         return arr
-    pivot = arr[len(arr) // 2]
+    pivot  = arr[len(arr) // 2]
     left   = [x for x in arr if x < pivot]
     middle = [x for x in arr if x == pivot]
     right  = [x for x in arr if x > pivot]
@@ -68,6 +68,15 @@ def merge_sort(arr):
     return result
 
 
+# ── Input generators ─────────────────────────────────────────────────────────
+
+def random_list(n):
+    return [random.randint(0, 100_000) for _ in range(n)]
+
+def sorted_list(n):
+    return list(range(1, n + 1))
+
+
 # ── Timing helper ────────────────────────────────────────────────────────────
 
 MIN_BENCH_SECONDS = 0.05
@@ -75,7 +84,6 @@ MAX_REPS          = 100_000
 
 
 def measure(sort_fn, data):
-   
     reps = 1
     t0 = time.perf_counter()
     sort_fn(data)
@@ -84,22 +92,21 @@ def measure(sort_fn, data):
     if elapsed < MIN_BENCH_SECONDS:
         reps = min(MAX_REPS, max(1, int(MIN_BENCH_SECONDS / elapsed) + 1))
 
-    # Actual timed run
     t0 = time.perf_counter()
     for _ in range(reps):
         sort_fn(data)
     total = time.perf_counter() - t0
 
-    return total / reps          # average time for ONE call
+    return total / reps   # average time for ONE call
 
 
 # ── File logging ─────────────────────────────────────────────────────────────
 
-LOG_FILE = "sort_results.csv"
-FIELDNAMES = ["timestamp", "n", "algorithm", "avg_time_sec"]
+LOG_FILE   = "sort_results.csv"
+FIELDNAMES = ["timestamp", "distribution", "n", "algorithm", "avg_time_sec"]
 
 
-def save_results(n, results: dict):
+def save_results(distribution, n, results: dict):
     """Append one row per algorithm to the CSV log file."""
     file_exists = os.path.isfile(LOG_FILE)
     timestamp   = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
@@ -107,10 +114,11 @@ def save_results(n, results: dict):
     with open(LOG_FILE, "a", newline="") as f:
         writer = csv.DictWriter(f, fieldnames=FIELDNAMES)
         if not file_exists:
-            writer.writeheader()          # write header only once
+            writer.writeheader()
         for algo, t in results.items():
             writer.writerow({
                 "timestamp"   : timestamp,
+                "distribution": distribution,
                 "n"           : n,
                 "algorithm"   : algo,
                 "avg_time_sec": SKIPPED_MARKER if t == SKIPPED_MARKER else f"{t:.10f}",
@@ -120,69 +128,66 @@ def save_results(n, results: dict):
 
 
 # ── Skip thresholds ──────────────────────────────────────────────────────────
-# If n exceeds an algorithm's limit it is skipped with an explanation instead
-# of running for minutes.  Tweak these values to match your machine.
 
 SKIP_THRESHOLDS = {
-    #  algorithm      max n before skipping    reason shown to the user
-    "Bubble"   : (10_000,  "O(n²) — would take several minutes for large n"),
-    "Selection": (10_000,  "O(n²) — would take several minutes for large n"),
-    "Insertion": (50_000,  "O(n²) — acceptable up to ~50 k, too slow beyond"),
-    # Quick and Merge have no practical limit for typical inputs
+    "Bubble"   : (10_000, "O(n²) — would take several minutes for large n"),
+    "Selection": (10_000, "O(n²) — would take several minutes for large n"),
+    "Insertion": (50_000, "O(n²) — acceptable up to ~50k, too slow beyond"),
 }
 
-SKIPPED_MARKER = "SKIPPED"   # stored in CSV so the row is still recorded
+SKIPPED_MARKER = "SKIPPED"
 
 
-# ── Main ─────────────────────────────────────────────────────────────────────
+# ── Runner ────────────────────────────────────────────────────────────────────
 
-def random_list(n):
-    return [random.randint(0, 100_000) for _ in range(n)]
+algorithms = {
+    "Bubble"   : bubble_sort,
+    "Selection": selection_sort,
+    "Quick"    : quick_sort,
+    "Insertion": insertion_sort,
+    "Merge"    : merge_sort,
+}
 
 
-def main():
-    n = int(input("Enter number of elements: "))
-    data = random_list(n)
-
-    algorithms = {
-        "Bubble"   : bubble_sort,
-        "Selection": selection_sort,
-        "Quick"    : quick_sort,
-        "Insertion": insertion_sort,
-        "Merge"    : merge_sort,
-    }
-
+def run_benchmark(n, data, distribution_name):
+    print(f"\n=== Distribution: {distribution_name.upper()}, n = {n} ===")
     print(f"\n{'Algorithm':<12}  {'Avg time (s)':>18}   {'Formatted':>14}")
     print("-" * 50)
 
     results = {}
     for name, fn in algorithms.items():
-
-        # ── Check skip threshold ─────────────────────────────────────────────
         if name in SKIP_THRESHOLDS:
             limit, reason = SKIP_THRESHOLDS[name]
             if n > limit:
-                print(f"{name:<12}  {'--- SKIPPED ---':>18} {reason}")
+                print(f"{name:<12}  {'--- SKIPPED ---':>18}  {reason}")
                 results[name] = SKIPPED_MARKER
                 continue
 
-        # ── Run & time ───────────────────────────────────────────────────────
         t = measure(fn, data)
         results[name] = t
 
-        # Pick the most readable unit
-        if t < 1e-6:
-            formatted = f"{t * 1e9:>10.4f} ns"
-        elif t < 1e-3:
-            formatted = f"{t * 1e6:>10.4f} µs"
-        elif t < 1:
-            formatted = f"{t * 1e3:>10.4f} ms"
-        else:
-            formatted = f"{t:>10.4f}  s"
+        if   t < 1e-6: fmt = f"{t * 1e9:>10.4f} ns"
+        elif t < 1e-3: fmt = f"{t * 1e6:>10.4f} µs"
+        elif t < 1:    fmt = f"{t * 1e3:>10.4f} ms"
+        else:          fmt = f"{t:>10.4f}  s"
 
-        print(f"{name:<12}  {t:>18.10f}   {formatted}")
+        print(f"{name:<12}  {t:>18.10f}   {fmt}")
 
-    save_results(n, results)
+    save_results(distribution_name, n, results)
+
+
+# ── Main ─────────────────────────────────────────────────────────────────────
+
+def main():
+    n = int(input("Enter number of elements: "))
+
+    # ── Random input ─────────────────────────────────────────────────────────
+    data_random = random_list(n)
+    run_benchmark(n, data_random, "random")
+
+    # ── Sorted input ─────────────────────────────────────────────────────────
+    data_sorted = sorted_list(n)
+    run_benchmark(n, data_sorted, "sorted")
 
 
 if __name__ == "__main__":
